@@ -29,17 +29,23 @@ def detect_themes(text, theme_map):
     return ",".join(t for t, kws in theme_map.items() if any(k in text_l for k in kws))
 
 
+_GENERIC = {"college","spring","princess","lewis","berger","logger","headquarters",
+            "skyline","lookout","paradise","horse camp","lone pine","obsidian",
+            "council","fremont","grizzly","sunset cove","sand bar flat","west point",
+            "denny","baker","pleasant","pines","mill creek","mad river","topsy",
+            "stewart","acorn","oak knoll"}
 def match_facility(text, facility_index):
+    """Require ≥2 words and ≥10 chars to avoid generic single-word false positives."""
     text_l = text.lower()
     out, seen = [], set()
     for fid, norm, full in facility_index:
-        if len(norm) < 5 or fid in seen:
+        if fid in seen or len(norm) < 10 or " " not in norm or norm in _GENERIC:
             continue
         if norm in text_l:
             out.append((fid, full, 100))
             seen.add(fid)
-        elif fuzz.partial_ratio(norm, text_l) >= 93:
-            out.append((fid, full, 93))
+        elif fuzz.partial_ratio(norm, text_l) >= 95:
+            out.append((fid, full, 95))
             seen.add(fid)
     return out[:5]
 
