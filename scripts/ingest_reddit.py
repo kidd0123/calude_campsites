@@ -34,10 +34,34 @@ _GENERIC = {"college","spring","princess","lewis","berger","logger","headquarter
             "council","fremont","grizzly","sunset cove","sand bar flat","west point",
             "denny","baker","pleasant","pines","mill creek","mad river","topsy",
             "stewart","acorn","oak knoll"}
-def match_facility(text, facility_index):
-    """Require ≥2 words and ≥10 chars to avoid generic single-word false positives."""
+
+def load_aliases():
+    """Load aliases.yaml: returns list of (alias, facility_contains)."""
+    import os, yaml
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "aliases.yaml")
+    if not os.path.exists(path):
+        return []
+    with open(path) as f:
+        data = yaml.safe_load(f) or {}
+    return [(a["alias"].lower(), a["facility_contains"].lower()) for a in data.get("aliases", [])]
+
+
+def match_facility(text, facility_index, aliases=None):
+    """Match by:
+    1. Aliases (e.g. 'big basin' → any facility whose name contains 'Basin')
+    2. Exact normalized name match (multi-word, ≥10 chars)
+    """
     text_l = text.lower()
     out, seen = [], set()
+    if aliases:
+        for alias, frag in aliases:
+            if alias in text_l:
+                for fid, norm, full in facility_index:
+                    if fid in seen:
+                        continue
+                    if frag in full.lower():
+                        out.append((fid, full, 100))
+                        seen.add(fid)
     for fid, norm, full in facility_index:
         if fid in seen or len(norm) < 10 or " " not in norm or norm in _GENERIC:
             continue
@@ -121,6 +145,8 @@ def main():
     if not facs:
         sys.exit("Run ingest_ridb.py first")
     index = [(r["id"], normalize(r["name"]), r["name"]) for r in facs]
+    aliases = load_aliases()
+    print(f"Loaded {len(aliases)} curated aliases")
     theme_map = cfg["themes"]
     subs = cfg["reddit"]["subreddits"]
     posts_per = min(cfg["reddit"]["posts_per_sub"], 200)  # JSON cap
@@ -133,7 +159,7 @@ def main():
         print(f"  {len(posts)} posts")
         for p in posts:
             blob = (p.get("title") or "") + "\n" + (p.get("selftext") or "")
-            for fid, full, score in match_facility(blob, index):
+            for fid, full, score in match_facility(blob, index, aliases):
                 themes = detect_themes(blob, theme_map)
                 conn.execute(
                     """INSERT OR IGNORE INTO reddit_mentions
@@ -145,14 +171,14 @@ def main():
                 )
                 total += 1
             # Only fetch comments if the post itself had a hit, to save bandwidth
-            mentioned = any(match_facility(blob, index))
+            mentioned = any(match_facility(blob, index, aliases))
             if not mentioned:
                 continue
             for c in fetch_comments(sub, p["id"])[:comments_per]:
                 body = c.get("body") or ""
                 if len(body) < 30:
                     continue
-                for fid, full, score in match_facility(body, index):
+                for fid, full, score in match_facility(body, index, aliases):
                     themes = detect_themes(body, theme_map)
                     conn.execute(
                         """INSERT OR IGNORE INTO reddit_mentions
@@ -175,7 +201,7 @@ def main():
         for child in data.get("data", {}).get("children", []):
             p = child["data"]
             blob = (p.get("title") or "") + "\n" + (p.get("selftext") or "")
-            for fid, full, score in match_facility(blob, index):
+            for fid, full, score in match_facility(blob, index, aliases):
                 themes = detect_themes(blob, theme_map)
                 conn.execute(
                     """INSERT OR IGNORE INTO reddit_mentions

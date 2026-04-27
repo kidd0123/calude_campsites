@@ -29,8 +29,9 @@ def parse_args():
     return p.parse_args()
 
 
-def check_availability(facility_id, start_date, nights):
+def check_availability(facility_id, start_date, nights, retries=2):
     """Return (distinct_available_dates, nights) or (None, nights) on error."""
+    import time
     if not facility_id.startswith("rg:"):
         return (None, nights)
     rg_id = facility_id.split(":", 1)[1]
@@ -41,23 +42,28 @@ def check_availability(facility_id, start_date, nights):
         print(f"camply import failed: {e}", file=sys.stderr)
         return (None, nights)
     end_date = start_date + dt.timedelta(days=nights)
-    try:
-        search = SearchRecreationDotGov(
-            search_window=SearchWindow(start_date=start_date, end_date=end_date),
-            campgrounds=[int(rg_id)],
-            nights=1,
-        )
-        results = search.get_matching_campsites(log=False, verbose=False, continuous=False)
-    except Exception:
-        return (None, nights)
-    by_date = set()
-    for r in results or []:
-        d = getattr(r, "booking_date", None) or getattr(r, "availability_date", None)
-        if d:
-            d_key = d.date() if hasattr(d, "date") else d
-            if start_date <= d_key < end_date:
-                by_date.add(d_key)
-    return (len(by_date), nights)
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            search = SearchRecreationDotGov(
+                search_window=SearchWindow(start_date=start_date, end_date=end_date),
+                campgrounds=[int(rg_id)],
+                nights=1,
+            )
+            results = search.get_matching_campsites(log=False, verbose=False, continuous=False)
+            by_date = set()
+            for r in results or []:
+                d = getattr(r, "booking_date", None) or getattr(r, "availability_date", None)
+                if d:
+                    d_key = d.date() if hasattr(d, "date") else d
+                    if start_date <= d_key < end_date:
+                        by_date.add(d_key)
+            return (len(by_date), nights)
+        except Exception as e:
+            last_err = e
+            if attempt < retries:
+                time.sleep(1.5 * (attempt + 1))
+    return (None, nights)
 
 
 def main():
@@ -113,7 +119,8 @@ def main():
         results = [(c, None, None) for c in candidates[:limit]]
     else:
         results = []
-        with ThreadPoolExecutor(max_workers=6) as ex:
+        # Lower parallelism (3) to reduce camply rate-limit failures.
+        with ThreadPoolExecutor(max_workers=3) as ex:
             futs = {ex.submit(check_availability, c["id"], start, nights): c for c in candidates}
             for f in as_completed(futs):
                 c = futs[f]
@@ -121,7 +128,8 @@ def main():
                     avail_dates, _ = f.result()
                 except Exception:
                     avail_dates = None
-                if avail_dates is None or avail_dates >= nights:
+                # Only include sites we know are available; drop unknowns from output.
+                if avail_dates is not None and avail_dates >= nights:
                     results.append((c, avail_dates, None))
         results = results[:limit]
 
