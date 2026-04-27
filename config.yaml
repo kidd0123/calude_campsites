@@ -1,0 +1,58 @@
+home:
+  name: Oakland, CA
+  lat: 37.8044
+  lon: -122.2712
+
+defaults:
+  nights: 2
+  max_hours: 5
+  limit: 15
+  start: next_friday
+
+# Bounding for catalog ingest
+catalog:
+  states: [CA, NV, OR]
+  max_radius_miles: 400
+  exclude_keywords: [walk-in, walk in, boat-in, boat in, hike-in, hike in, backcountry, wilderness permit, group only]
+
+reddit:
+  subreddits:
+    - CaliCamping
+    - CampingandHiking
+    - camping
+    - SanFrancisco
+    - bayarea
+    - AskSF
+    - dispersedcamping
+    - Outdoors
+    - sanfrancisco
+    - sandiego
+  posts_per_sub: 500
+  comments_per_post: 100
+  search_terms: [camping, campground, campsite, redwoods, weekend trip, car camp]
+
+themes:
+  redwoods: [redwood, redwoods, sequoia, old growth, old-growth]
+  coast: [coast, beach, ocean, tidepool, headland, cove]
+  alpine: [alpine, sierra, high country, lake, granite, tahoe, mammoth]
+  desert: [desert, joshua, mojave, anza, death valley]
+  hot_springs: [hot spring, hot springs, soak]
+  dispersed: [dispersed, free, blm, primitive, no reservation, first-come, first come]
+  quiet: [quiet, secluded, hidden, empty, no crowds, off the beaten]
+
+scoring:
+  weights:
+    reddit: 0.40
+    curated: 0.20
+    uniqueness: 0.30
+    theme: 0.10
+  hidden_gem_top_n: 50    # facilities ranked above this are "well-known" → uniqueness=0
+  final_blend:
+    quality: 0.6
+    proximity: 0.4
+
+curated_sources:
+  - https://www.outsideonline.com/adventure-travel/destinations/north-america/best-campgrounds-northern-california/
+  - https://www.sfgate.com/travel/article/best-bay-area-campgrounds.php
+  - https://www.hipcamp.com/en-US/journal/california/california-state-park-camping-guide
+  - https://www.parks.ca.gov/?page_id=21649
